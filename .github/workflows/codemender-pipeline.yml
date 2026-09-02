@@ -118,12 +118,10 @@ jobs:
             echo "::group::cm fix $FID"
             cm fix "$FID" -y --bypass-warning 2>&1 | tee "$RUNNER_TEMP/fix-$FID.cm.log" || true
             python3 .github/scripts/extract_cm_diff.py "$RUNNER_TEMP/fix-$FID.cm.log" > "$RUNNER_TEMP/fix-$FID.patch" || true
-            if [ -s "$RUNNER_TEMP/fix-$FID.patch" ] \
-               && git apply --check -p1 --directory="$SCAN_PATH" "$RUNNER_TEMP/fix-$FID.patch" 2>/dev/null; then
+            if [ -s "$RUNNER_TEMP/fix-$FID.patch" ] && git apply --check -p1 --directory="$SCAN_PATH" "$RUNNER_TEMP/fix-$FID.patch" 2>/dev/null; then
               git apply -p1 --directory="$SCAN_PATH" "$RUNNER_TEMP/fix-$FID.patch"
               echo "Applied extracted patch for $FID (with directory=$SCAN_PATH)."
-            elif [ -s "$RUNNER_TEMP/fix-$FID.patch" ] \
-               && git apply --check -p1 "$RUNNER_TEMP/fix-$FID.patch" 2>/dev/null; then
+            elif [ -s "$RUNNER_TEMP/fix-$FID.patch" ] && git apply --check -p1 "$RUNNER_TEMP/fix-$FID.patch" 2>/dev/null; then
               git apply -p1 "$RUNNER_TEMP/fix-$FID.patch"
               echo "Applied extracted patch for $FID (root relative)."
             else
@@ -131,23 +129,6 @@ jobs:
             fi
             echo "::endgroup::"
           done
-
-          # Fallback: if cm fix did not modify login.ts on disk, rewrite the SQL injection with parameterized replacements
-          if [ -z "$(git status --porcelain -- "$SCAN_PATH")" ]; then
-            echo "Applying parameterized query remediation to routes/login.ts..."
-            python3 -c "
-path = 'routes/login.ts'
-with open(path, 'r') as f:
-    c = f.read()
-target = \"models.sequelize.query(\`SELECT * FROM Users WHERE email = '\${req.body.email || \'\'}' AND password = '\${security.hash(req.body.password || \'\')}' AND deletedAt IS NULL\`, { model: UserModel, plain: true })\"
-fixed = \"models.sequelize.query('SELECT * FROM Users WHERE email = :email AND password = :password AND deletedAt IS NULL', { replacements: { email: req.body.email || '', password: security.hash(req.body.password || '') }, model: UserModel, plain: true })\"
-if target in c:
-    c = c.replace(target, fixed)
-    with open(path, 'w') as f:
-        f.write(c)
-    print('Successfully updated routes/login.ts to parameterized query.')
-"
-          fi
           echo "----- working-tree changes under $SCAN_PATH -----"
           git status --porcelain -- "$SCAN_PATH" || true
 
